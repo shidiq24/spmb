@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admin - SPMB SMPN 1 Umbulsari</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: #fff; padding: 15px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #2563eb; }
+        .stat-card .count { font-size: 24px; font-weight: bold; color: #1e293b; }
+        
+        .controls { display: flex; flex-wrap: wrap; gap: 15px; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; align-items: flex-end; }
+        .search-box { flex: 2; min-width: 250px; }
+        .sort-box { flex: 1; min-width: 150px; }
+        
+        .table-container { background: white; padding: 10px; border-radius: 12px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        th { background: #f8fafc; color: #475569; cursor: pointer; position: relative; }
+        th:hover { background: #f1f5f9; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+        
+        .doc-links a { color: #2563eb; text-decoration: none; font-weight: 600; font-size: 11px; margin-right: 5px; padding: 2px 5px; border: 1px solid #e2e8f0; border-radius: 4px; }
+        .doc-links a:hover { background: #f1f5f9; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .bg-zonasi { background: #dcfce7; color: #166534; }
+        .bg-prestasi { background: #dbeafe; color: #1e40af; }
+        .bg-afirmasi { background: #fef9c3; color: #854d0e; }
+        .bg-mutasi { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 1200px;">
+       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Dashboard Panitia SPMB 2026</h2>
+    <div>
+        <button onclick="exportToExcel()" class="btn primary" style="background: #059669;">Export ke Excel</button>
+        <button onclick="location.reload()" class="btn success">Refresh Data</button>
+    </div>
+</div>
+        <div class="stats-grid">
+            <div class="stat-card"><h4>Total</h4><div class="count" id="totalCount">0</div></div>
+            <div class="stat-card"><h4>Zonasi</h4><div class="count" id="zonasiCount">0</div></div>
+            <div class="stat-card"><h4>Prestasi</h4><div class="count" id="prestasiCount">0</div></div>
+            <div class="stat-card"><h4>Afirmasi</h4><div class="count" id="afirmasiCount">0</div></div>
+            <div class="stat-card"><h4>Mutasi</h4><div class="count" id="mutasiCount">0</div></div>
+        </div>
+
+        <div class="controls">
+            <div class="search-box">
+                <label>Cari Nama atau NISN:</label>
+                <input type="text" id="searchInput" placeholder="Ketik nama/nisn...">
+            </div>
+            <div class="sort-box">
+                <label>Urutkan Berdasarkan:</label>
+                <select id="sortSelect">
+                    <option value="waktuDaftar_desc">Terbaru</option>
+                    <option value="nama_asc">Nama (A-Z)</option>
+                    <option value="nama_desc">Nama (Z-A)</option>
+                    <option value="jalur_asc">Jalur</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+						<tr>
+							<th>NISN</th>
+							<th>Nama Lengkap</th>
+							<th>Jalur</th>
+							<th>Alamat Lengkap</th>
+							<th>No WA</th>
+							<th>Berkas Dokumen</th>
+							<th>Aksi</th> </tr>
+					</thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="5" style="text-align:center;">Mengambil data pendaftar...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from "./firebase-config.js";
+    import { supabase } from "./supabase-config.js"; // Butuh ini untuk hapus file
+    import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    let pendaftarData = [];
+
+        async function loadData() {
+            try {
+                const querySnapshot = await getDocs(collection(db, "pendaftar_2026"));
+                pendaftarData = [];
+                
+                querySnapshot.forEach((doc) => {
+                    const d = doc.data();
+                    // Gabungkan Alamat
+                    const alamatLengkap = `RT ${d.alamat?.rt || '0'}/RW ${d.alamat?.rw || '0'}, ${d.alamat?.dusun || '-'}, ${d.alamat?.desa || '-'}, Kec. ${d.alamat?.kecamatan || '-'}`;
+                    
+                    pendaftarData.push({
+                        nisn: doc.id,
+                        alamatLengkap: alamatLengkap,
+                        ...d
+                    });
+                });
+
+                renderTable(pendaftarData);
+                updateStats(pendaftarData);
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById("tableBody").innerHTML = "<tr><td colspan='5'>Gagal memuat data.</td></tr>";
+            }
+        }
+
+        function renderTable(data) {
+    const tableBody = document.getElementById("tableBody");
+    tableBody.innerHTML = "";
+
+    data.forEach((d) => {
+        // Cek kelengkapan dokumen
+        const docs = d.dokumen || {};
+        const isComplete = docs.foto && docs.kk && docs.akta && docs.skl;
+        
+        // Buat simbol peringatan jika tidak lengkap
+        const statusSimbol = isComplete 
+            ? '<span title="Berkas Lengkap" style="color: #16a34a;">✅</span>' 
+            : '<span title="Berkas Belum Lengkap" style="color: #ef4444;">⚠️</span>';
+
+        const row = `
+            <tr>
+                <td>${statusSimbol} <b>${d.nisn}</b></td>
+                <td>${d.nama}</td>
+                <td><span class="badge bg-${d.jalur?.toLowerCase()}">${d.jalur}</span></td>
+                <td><small>${d.alamatLengkap}</small></td>
+				<td>
+            <a href="https://wa.me/${formatWA(d.no_wa)}" target="_blank" class="btn success" style="padding: 3px 8px; font-size: 10px; background: #25d366;">
+                Chat WA
+            </a>
+        </td>
+                <td class="doc-links">
+                    ${renderLink(docs.foto, "FOTO")}
+                    ${renderLink(docs.kk, "KK")}
+                    ${renderLink(docs.akta, "AKTA")}
+                    ${renderLink(docs.skl, "SKL")}
+                </td>
+                <td>
+                    <button onclick="editData('${d.nisn}')" class="btn warning" style="padding: 5px 10px; font-size: 11px;">Edit</button>
+                    <button onclick="hapusData('${d.nisn}')" class="btn danger" style="padding: 5px 10px; font-size: 11px; background:#ef4444; color:white;">Hapus</button>
+                </td>
+            </tr>
+        `;
+		
+        tableBody.innerHTML += row;
+    });
+}
+function formatWA(nomor) {
+    if(!nomor) return "";
+    let clean = nomor.replace(/[^0-9]/g, ""); // Hilangkan karakter non-angka
+    if (clean.startsWith("0")) clean = "62" + clean.slice(1); // Ubah 081... jadi 6281...
+    return clean;
+}
+
+// Fungsi pembantu untuk mewarnai link yang kosong
+function renderLink(url, label) {
+    if (!url || url === "") {
+        return `<span style="color: #cbd5e1; font-size: 11px; margin-right: 5px; padding: 2px 5px; border: 1px dashed #cbd5e1; border-radius: 4px;">${label}</span>`;
+    }
+    return `<a href="${url}" target="_blank">${label}</a>`;
+}
+    // FUNGSI EDIT: Mengarahkan kembali ke halaman depan untuk update
+    // admin.html
+	window.editData = (nisn) => {
+		// Simpan ke storage browser
+		sessionStorage.setItem("edit_nisn", nisn);
+		// Pindah ke halaman pendaftaran
+		window.location.href = "index.html"; 
+	};
+
+    // FUNGSI HAPUS: Menghapus data di Firestore dan File di Supabase
+    window.hapusData = async (nisn) => {
+        if (!confirm(`Apakah Anda yakin ingin menghapus pendaftar dengan NISN: ${nisn}?\nData yang dihapus tidak bisa dikembalikan.`)) return;
+
+        try {
+            // 1. Hapus Dokumen di Firestore
+            await deleteDoc(doc(db, "pendaftar_2026", nisn));
+
+            // 2. Hapus File di Supabase (Opsional tapi disarankan agar storage tidak penuh)
+            const files = [`${nisn}/kk.jpg`, `${nisn}/akta.jpg`, `${nisn}/skl.pdf`, `${nisn}/foto.jpg` ];
+            await supabase.storage.from('dokumen').remove(files);
+
+            alert("Data berhasil dihapus!");
+            location.reload(); // Segarkan halaman
+        } catch (error) {
+            console.error("Gagal menghapus:", error);
+            alert("Terjadi kesalahan saat menghapus data.");
+        }
+    };
+
+    loadData();
+
+        function updateStats(data) {
+            const counts = { total: data.length, Zonasi: 0, Prestasi: 0, Afirmasi: 0, Mutasi: 0 };
+            data.forEach(d => { if(counts[d.jalur] !== undefined) counts[d.jalur]++; });
+            
+            document.getElementById("totalCount").innerText = counts.total;
+            document.getElementById("zonasiCount").innerText = counts.Zonasi;
+            document.getElementById("prestasiCount").innerText = counts.Prestasi;
+            document.getElementById("afirmasiCount").innerText = counts.Afirmasi;
+            document.getElementById("mutasiCount").innerText = counts.Mutasi;
+        }
+
+        // Fungsi Cari
+        document.getElementById("searchInput").addEventListener("input", (e) => {
+            const val = e.target.value.toLowerCase();
+            const filtered = pendaftarData.filter(d => 
+                d.nama.toLowerCase().includes(val) || d.nisn.includes(val)
+            );
+            renderTable(filtered);
+        });
+// admin.html - Tambahkan di dalam <script type="module">
+window.exportToExcel = () => {
+    if (pendaftarData.length === 0) return alert("Tidak ada data untuk dieksport");
+
+    // 1. Siapkan data yang akan dieksport (pilih kolom tertentu agar rapi)
+    const dataEksport = pendaftarData.map(d => ({
+        "NISN": d.nisn,
+        "Nama Lengkap": d.nama,
+        "Jalur": d.jalur,
+        "Jenis Kelamin": d.jk,
+        "Asal Sekolah": d.asal_sekolah,
+        "NIK": d.nik,
+        "No KK": d.no_kk,
+        "Alamat": d.alamatLengkap,
+        "Link Foto": d.dokumen?.foto || "",
+        "Link KK": d.dokumen?.kk || "",
+        "Link Akta": d.dokumen?.akta || "",
+        "Link SKL": d.dokumen?.skl || ""
+    }));
+
+    // 2. Buat Workbook dan Worksheet
+    const worksheet = XLSX.utils.json_to_sheet(dataEksport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Pendaftar 2026");
+
+    // 3. Simpan File
+    const tanggal = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `Rekap_SPMB_SMPN1_Umbulsari_${tanggal}.xlsx`);
+};
+        // Fungsi Sorting
+        document.getElementById("sortSelect").addEventListener("change", (e) => {
+            const [key, order] = e.target.value.split("_");
+            const sorted = [...pendaftarData].sort((a, b) => {
+                let valA = a[key] || "";
+                let valB = b[key] || "";
+                
+                if (key === "waktuDaftar") {
+                    valA = a[key]?.seconds || 0;
+                    valB = b[key]?.seconds || 0;
+                }
+
+                if (order === "asc") return valA > valB ? 1 : -1;
+                return valA < valB ? 1 : -1;
+            });
+            renderTable(sorted);
+        });
+
+        loadData();
+    </script>
+</body>
+</html>
